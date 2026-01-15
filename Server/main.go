@@ -7,7 +7,6 @@ import (
 	"net"
 )
 
-
 func main() {
 	// Start listening on TCP
 	listener, err := net.Listen("tcp", "localhost:8080")
@@ -30,8 +29,6 @@ func main() {
 		}
 
 		// Handle each connection in a goroutine
-		go handleConnection(conn)
+		go handleConnection(conn, mainHandler)
 	}
 }
-
-
