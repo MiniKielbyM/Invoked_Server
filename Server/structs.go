@@ -11,21 +11,21 @@ type message struct {
 }
 
 type lobby struct {
-	Id       string
-	Name     string
+	Id         string
+	Name       string
 	InProgress bool
-	Host     player
-	Players  []player
-	Game game
+	Host       player
+	Players    []player
+	Game       game
 }
 
 // Game substructs
 
 type cost struct {
-	Chips 	 	int
-	Burn  		int
-	Sack  		int
-	Vitality 	int
+	Chips    int
+	Burn     int
+	Sack     int
+	Vitality int
 }
 
 type statBlock struct {
@@ -67,12 +67,14 @@ func (c *card) ResetStats() {
 // Game superstructs
 
 type player struct {
-	Conn  *net.Conn
-	Hand  hand
-	Deck  deck
-	Id    string
-	Name  string
-	Chips int
+	Conn    *net.Conn
+	Hand    hand
+	Deck    deck
+	Discard deck
+	Ashtray deck
+	Id      string
+	Name    string
+	Chips   int
 }
 type deck struct {
 	Cards []card
@@ -81,14 +83,14 @@ type hand struct {
 	Cards []card
 }
 type table struct {
-	Player1 player
-	P1FrontRow []card
-	P1BackRow  []card
+	Player1    player
+	P1FrontRow [][]card
+	P1BackRow  [][]card
 	Player2    player
-	P2FrontRow []card
-	P2BackRow  []card
+	P2FrontRow [][]card
+	P2BackRow  [][]card
+	SealZone   [][]card
 }
-
 
 // Game main struct
 
