@@ -75,6 +75,8 @@ type player struct {
 	Id      string
 	Name    string
 	Chips   int
+	Health  int
+	CurrentLobbyId string
 }
 type deck struct {
 	Cards []card

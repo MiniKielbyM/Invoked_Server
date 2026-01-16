@@ -2,21 +2,41 @@ package main
 
 import (
 	"bufio"
+	"crypto/rand"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"log"
 	"net"
-	"strings"
 	"os/exec"
+	"strings"
 )
+
+// CryptoRandSource implements rand.Source to use crypto/rand for secure randomness.
+type CryptoRandSource struct{}
+
+func (s CryptoRandSource) Int63() int64 {
+	return int64(s.Uint64() & (1<<63 - 1)) // mask off sign bit
+}
+
+func (s CryptoRandSource) Uint64() uint64 {
+	var b [8]byte
+	_, err := rand.Read(b[:])
+	if err != nil {
+		log.Fatal("crypto/rand error:", err)
+	}
+	return binary.LittleEndian.Uint64(b[:])
+}
+
+func (s CryptoRandSource) Seed(seed int64) {} // Seed is a no-op for crypto/rand
 
 // Reserved headers that only the server can send
 var reservedHeaders = map[string]bool{
-	"LobbyCreate": true,
-	"LobbyJoin":   true,
-	"LobbyList":   true,
-	"GameStart":   true,
-	"PlayerConnect": true,
+	"LobbyCreate":      true,
+	"LobbyJoin":        true,
+	"LobbyList":        true,
+	"GameStart":        true,
+	"PlayerConnect":    true,
 	"PlayerUpdateDeck": true,
 }
 
@@ -48,6 +68,15 @@ func parseDeckString(deckStr string) []card {
 		}
 	}
 	return deck
+}
+
+func (d *deck) shuffle() {
+	// Simple shuffle implementation using math/rand with crypto/rand source
+	source := CryptoRandSource{}
+	for i := len(d.Cards) - 1; i > 0; i-- {
+		j := int(source.Uint64() % uint64(i+1))
+		d.Cards[i], d.Cards[j] = d.Cards[j], d.Cards[i]
+	}
 }
 
 func parseMessage(raw string) message {
@@ -86,21 +115,28 @@ func sendMessage(conn net.Conn, headers []string, body string) error {
 
 // Handlers
 func handleLobbyCreate(message message) error {
+	if len(message.Body) == 0 {
+		return fmt.Errorf("lobby name cannot be empty")
+	}
+	if players[message.Sender].CurrentLobbyId != "" {
+		return fmt.Errorf("player is already in a lobby")
+	}
 	lobbyName := message.Body
 	lobbyId := fmt.Sprintf("lobby%d", len(lobbies)+1)
+
 	newLobby := &lobby{
-		Id:      lobbyId,
-		Name:    lobbyName,
-		Host:    player{
-			Conn:  &message.Sender,
-			Hand:  hand{},
-			Deck:  deck{},
-			Id:    "",
-			Name:  "",
-			Chips: 0,
+		Id:   lobbyId,
+		Name: lobbyName,
+		Host: players[message.Sender],
+		Players: []player{
+			players[message.Sender],
 		},
+		InProgress: false,
 	}
 	lobbies[lobbyId] = newLobby
+	p := players[message.Sender]
+	p.CurrentLobbyId = newLobby.Id
+	players[message.Sender] = p
 	fmt.Printf("Created lobby: %s with ID: %s\n", lobbyName, lobbyId)
 	sendMessage(message.Sender, []string{"LobbyCreate"}, fmt.Sprintf("Lobby %s created with ID %s", lobbyName, lobbyId))
 	return nil
@@ -118,14 +154,13 @@ func handleLobbyJoin(message message) error {
 	if len(lobby.Players) == 2 {
 		return fmt.Errorf("cannot join lobby %s: lobby is full", lobbyId)
 	}
-	lobby.Players = append(lobby.Players, player{
-		Conn:  &message.Sender,
-		Hand:  hand{},
-		Deck:  deck{},
-		Id:    "",
-		Name:  "",
-		Chips: 0,
-	})
+	if players[message.Sender].CurrentLobbyId != "" {
+		return fmt.Errorf("player is already in a lobby")
+	}
+	p := players[message.Sender]
+	p.CurrentLobbyId = lobby.Id
+	players[message.Sender] = p
+	lobby.Players = append(lobby.Players, players[message.Sender])
 	fmt.Printf("Player joined lobby: %s\n", lobbyId)
 	sendMessage(message.Sender, []string{"LobbyJoin"}, fmt.Sprintf("Joined lobby %v", lobby))
 	return nil
@@ -143,12 +178,12 @@ func handleLobbyList(message message) error {
 func handlePlayerConnect(message message) error {
 	newUUID, _ := exec.Command("uuidgen").Output()
 	players[message.Sender] = player{
-		Conn:  &message.Sender,
-		Deck:  deck{
+		Conn: &message.Sender,
+		Deck: deck{
 			Cards: parseDeckString(strings.Split(strings.Split(message.Body, "||PLAYER.DECK||")[1], "||")[0]),
 		},
-		Id:    string(newUUID),
-		Name:  strings.Split(strings.Split(message.Body, "||PLAYER.NAME||")[1], "||")[0],
+		Id:   string(newUUID),
+		Name: strings.Split(strings.Split(message.Body, "||PLAYER.NAME||")[1], "||")[0],
 	}
 
 	fmt.Printf("Player connected: %v\n", players[message.Sender])
