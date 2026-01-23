@@ -15,4 +15,6 @@ public class BoardClass
     public int Opponent_Health = 1000;
     public int User_DeckCount = 40;
     public int Opponent_DeckCount = 40;
+    public int User_Chips = 0;
+    public int Opponent_Chips = 0;
 }
